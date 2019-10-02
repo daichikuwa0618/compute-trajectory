@@ -15,9 +15,9 @@ end module mod_constant
 module mod_parm
   ! module for parameters
   implicit none
-  double precision :: dt,tf,drag_coeff,star_density,injection_speed,injection_angle,star_diameter,projected_area,mass_star
-  double precision :: ALT,GLAT,GLONG,STL,F107A,F107,AP
-  integer :: IYD,SEC,MASS
+  double precision :: dt,tf,star_density,injection_speed,injection_angle,star_diameter,projected_area,mass_star
+  real :: SEC,ALT,GLAT,GLONG,STL,F107A,F107,AP
+  integer :: IYD,MASS
 end module mod_parm
 
 module mod_nrlmsise00
@@ -31,22 +31,22 @@ contains
     use mod_parm
     implicit none
     double precision rho,h
-    double precision D(9)
-    double precision T(2)
-    call METERC(.true.)
-    call GTD7D(IYD,SEC,h/1.0d3,GLAT,GLONG,0.,150.,150.,4.,MASS,D,T)
-    rho = D(6)
+    real D(9)
+    real T(2)
+    call METERS(.true.)
+    call GTD7(IYD,SEC,real(h/1.0d3),GLAT,GLONG,STL,150.0e0,150.0e0,4.0e0,MASS,D,T)
+    rho = dble(D(6))
     return
   end function rho
   function temp(h)
     use mod_parm
     implicit none
     double precision temp,h
-    double precision D(9)
-    double precision T(2)
-    call METERC(.true.)
-    call GTD7(IYD,SEC,h/1.0d3,GLAT,GLONG,0.,150.,150.,4.,MASS,D,T)
-    temp = T(2)
+    real D(9)
+    real T(2)
+    call METERS(.true.)
+    call GTD7(IYD,SEC,real(h/1.0d3),GLAT,GLONG,STL,150.0e0,150.0e0,4.0e0,MASS,D,T)
+    temp = dble(T(2))
     return
   end function temp
   function press(h)
@@ -58,10 +58,67 @@ contains
   end function press
 end module mod_nrlmsise00
 
+! module for coeffiecients (C_d, C_h)
+module mod_coeff
+  implicit none
+contains
+  ! C_d model (Henderson)
+  function drag_coeff(h,velo)
+    use mod_parm
+    use mod_nrlmsise00
+    implicit none
+    double precision h,velo,gamma,temp_w,a1,b1,c1,sa,drag_coeff
+    gamma = 1.4d0 ! gas constant
+    temp_w = 3.0d3 ! wall temperature [K]
+    a1 = 0.9d0 + 0.34d0/mach_num(h,velo)**2
+    b1 = 1.86d0*dsqrt(mach_num(h,velo)/reynolds(h,velo))
+    sa = mach_num(h,velo)*dsqrt(gamma/2.0d0)
+    c1 = 2.0d0 + 2.0d0/sa**2 + 1.058d0/sa*dsqrt(temp_w/temp(h)) - 2.0d0/sa**4
+
+    drag_coeff = (a1 + b1*c1)/(1.0d0 + b1)
+    return
+  end function drag_coeff
+  ! Mach number
+  function mach_num(h,velo)
+    use mod_parm
+    use mod_nrlmsise00
+    implicit none
+    double precision h,velo,gamma,gass_const,ss,mach_num
+    gamma = 1.4d0
+    gass_const = 286.9d0 ! gass const of Air (M = 28.966[g/mol])
+    ss = dsqrt(gamma*gass_const*temp(h)) ! sound speed
+    mach_num = velo/ss
+    return
+  end function mach_num
+  ! Reynolds number
+  function reynolds(h,velo)
+    use mod_parm
+    use mod_nrlmsise00
+    implicit none
+    double precision h,reynolds,velo
+    reynolds = rho(h)*velo*star_diameter/mu(h)
+    return
+  end function reynolds
+  ! viscosity coefficient
+  function mu(h)
+    use mod_nrlmsise00
+    implicit none
+    double precision h,mu,mu_0,temp_0,sutherland
+    ! constants (from U.S. stand. atmos. 1976.)
+    mu_0 = 1.7894d-5 ! [Pa*s]
+    temp_0 = 2.8815d2 ! [K]
+    sutherland = 1.104d2 ! [K]
+    ! calc. mu
+    mu = mu_0*((temp(h)/temp_0)**1.5d0)*(temp_0+sutherland)/(temp(h)+sutherland)
+    return
+  end function mu
+end module mod_coeff
+
 program trajectory
   use mod_constant
   use mod_parm
   use mod_nrlmsise00
+  use mod_coeff
   implicit none
   double precision :: t0,t,r0,r,dr0,dr,th0,th,dth0,dth
   double precision :: k1(4),k2(4),k3(4),k4(4)
@@ -71,24 +128,33 @@ program trajectory
   call parm
 
   ! initialize
-  t0 = 0.0d0 ! initial time [s]
-  t = t0
-  r0 = ALT + radius_earth ! initial r [m]
-  r = r0
-  th0 = 0.0d0 ! initial theta [rad.]
-  th = th0
-  dr0 = injection_speed*dsin(injection_angle)
-  dr = dr0
-  dth0 = injection_speed*dcos(injection_angle)/r ! V_th = r*dth
-  dth = dth0
+  t = 0.0d0 ! initial time [s]
+  r = ALT + radius_earth ! initial r [m]
+  th = 0.0d0 ! initial theta [rad.]
+  dr = injection_speed*dsin(injection_angle)
+  dth = injection_speed*dcos(injection_angle)/r ! V_th = r*dth
 
   ! output data
   open(100, file='./out.dat')
-  write(100,*) 'Time      Altitude      Velosity'
+  open(101, file='./coeff.dat')
+  open(102, file='./mach_drag.dat')
+  open(103, file='./atmos_model.dat')
+  write(100,*) '       Time  Altitude  Velosity'
+  write(101,*) '  Altitude   mach    reynolds     Cd'
+  write(102,*) '  mach     Cd'
+  write(103,*) ' Altitude    density        temp        mu'
 
   do while ((t < tf).and.((r-radius_earth) > 0.0d0))
     ! outputs
-    write(100,*) t,(r-radius_earth),velo(r,dr,dth)
+    write(100,200) t,(r-radius_earth),velo(r,dr,dth)
+    write(101,201) (r-radius_earth),mach_num(r-radius_earth,velo(r,dr,dth)),reynolds(r-radius_earth,velo(r,dr,dth)),drag_coeff(r-radius_earth,velo(r,dr,dth))
+    write(102,202) mach_num(r-radius_earth,velo(r,dr,dth)),drag_coeff(r-radius_earth,velo(r,dr,dth))
+    write(103,203) (r-radius_earth),rho(r-radius_earth),temp(r-radius_earth),mu(r-radius_earth)
+    ! format
+200 format(e12.4,2(f10.2))
+201 format(f10.2,f7.3,e12.4,f7.3)
+202 format(2(f7.3))
+203 format(f10.2,3(e12.4))
 
     ! 4th-order runge-ketta
     k1(1) = dt*func1(t,r,dr,th,dth)
@@ -121,6 +187,11 @@ program trajectory
     t = t + dt
   end do
 
+  ! close files
+  close(100)
+  close(101)
+  close(102)
+
 end program trajectory
 
 ! ******************************************************************
@@ -130,23 +201,36 @@ subroutine parm
   use mod_constant
   use mod_parm
   implicit none
+  double precision drag_coeff_inp
 
-  write(6,*) 'input values'
+  write(6,*) 'dt :'
   read(5,*) dt ! delta t [s]
+  write(6,*) 'ft :'
   read(5,*) tf ! finish time [s]
-  read(5,*) drag_coeff
+  write(6,*) 'Cd'
+  read(5,*) drag_coeff_inp
+  write(6,*) 'dens_star'
   read(5,*) star_density
+  write(6,*) 'inj_spee'
   read(5,*) injection_speed
+  write(6,*) 'inj_ang'
   read(5,*) injection_angle
+  write(6,*) 'star_d'
   read(5,*) star_diameter
+  write(6,*) 'IYD'
   read(5,*) IYD ! Year and Days
+  write(6,*) 'UTC'
   read(5,*) SEC ! Universal Time
+  write(6,*) 'ALT'
   read(5,*) ALT ! altitude
+  write(6,*) 'GLAT'
   read(5,*) GLAT ! geodetic latitude
+  write(6,*) 'GLONG'
   read(5,*) GLONG ! geodetic longtitude
-  GLAT = GLAT*pi/180.0d0
-  GLONG = GLONG*pi/180.0d0
+  !GLAT = GLAT*pi/180.0d0 ! [deg.] -> [rad.]
+  !GLONG = GLONG*pi/180.0d0 ! [deg.] -> [rad.]
   STL = SEC/3600.0d0 + GLONG/15.0d0
+  write(6,*) 'MASS'
   read(5,*) MASS ! Mass Number (0:temp,48:all)
   write(6,*) 'input complete'
 
@@ -171,9 +255,11 @@ function func2(t,r,dr,th,dth)
   use mod_constant
   use mod_parm
   use mod_nrlmsise00
+  use mod_coeff
   implicit none
+
   double precision t,r,dr,th,dth,func2,velo
-  func2 = -const_gravity*mass_earth/(r*r) - 1/(2*mass_star)*drag_coeff*projected_area*rho(r-radius_earth)*velo(r,dr,dth)*dr + r*dth**2
+  func2 = -const_gravity*mass_earth/(r*r) - 1/(2*mass_star)*drag_coeff(r-radius_earth,velo(r,dr,dth))*projected_area*rho(r-radius_earth)*velo(r,dr,dth)*dr + r*dth**2
 
   return
 end function func2
@@ -194,9 +280,10 @@ function func4(t,r,dr,th,dth)
   use mod_constant
   use mod_parm
   use mod_nrlmsise00
+  use mod_coeff
   implicit none
   double precision t,r,dr,th,dth,func4,velo
-  func4 = -1/(2*mass_star*r)*drag_coeff*projected_area*rho(r-radius_earth)*velo(r,dr,dth)*r*dth - 2/r*dr*dth
+  func4 = -1/(2*mass_star*r)*drag_coeff(r-radius_earth,velo(r,dr,dth))*projected_area*rho(r-radius_earth)*velo(r,dr,dth)*r*dth - 2/r*dr*dth
   return
 end function func4
 
