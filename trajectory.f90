@@ -129,7 +129,7 @@ program trajectory
 
   ! initialize
   t = 0.0d0 ! initial time [s]
-  r = ALT + radius_earth ! initial r [m]
+  r = dble(ALT) + radius_earth ! initial r [m]
   th = 0.0d0 ! initial theta [rad.]
   dr = injection_speed*dsin(injection_angle)
   dth = injection_speed*dcos(injection_angle)/r ! V_th = r*dth
@@ -259,7 +259,7 @@ function func2(t,r,dr,th,dth)
   implicit none
 
   double precision t,r,dr,th,dth,func2,velo
-  func2 = -const_gravity*mass_earth/(r*r) - 1/(2*mass_star)*drag_coeff(r-radius_earth,velo(r,dr,dth))*projected_area*rho(r-radius_earth)*velo(r,dr,dth)*dr + r*dth**2
+  func2 = -const_gravity*mass_earth/(r*r) - 1/(2.0d0*mass_star)*drag_coeff(r-radius_earth,velo(r,dr,dth))*projected_area*rho(r-radius_earth)*velo(r,dr,dth)*dr + r*dth**2.0d0
 
   return
 end function func2
@@ -283,7 +283,7 @@ function func4(t,r,dr,th,dth)
   use mod_coeff
   implicit none
   double precision t,r,dr,th,dth,func4,velo
-  func4 = -1/(2*mass_star*r)*drag_coeff(r-radius_earth,velo(r,dr,dth))*projected_area*rho(r-radius_earth)*velo(r,dr,dth)*r*dth - 2/r*dr*dth
+  func4 = -1/(2.0d0*mass_star*r)*drag_coeff(r-radius_earth,velo(r,dr,dth))*projected_area*rho(r-radius_earth)*velo(r,dr,dth)*r*dth - 2.0d0/r*dr*dth
   return
 end function func4
 
