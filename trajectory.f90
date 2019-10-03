@@ -12,7 +12,6 @@ module mod_constant
   double precision :: radius_earth = 6.371d6 ! radius of the Earth (on red road) [m]
   double precision :: shape = 2.0d0/3.0d0 ! for sphere (0.66666...)
   double precision :: abl_heat = 1.0d6 ! heat for ablation [J/kg]
-  double precision :: heat_coeff = 1.0d0
 end module mod_constant
 
 module mod_parm
@@ -79,6 +78,29 @@ contains
 
     drag_coeff = (a1 + b1*c1)/(1.0d0 + b1)
   end function drag_coeff
+  ! C_h model (Y. Prevereaud, 2014.)
+  function heat_coeff(h,velo,m)
+    use mod_constant, only: pi
+    use mod_nrlmsise00
+    implicit none
+    double precision h,velo,m,gamma,gm_mc,q,a2,b2,c2,heat_coeff
+    gamma = 1.4d0
+    gm_mc = gamma*mach_num(h,velo)**2 ! use just for makeing simpler
+    a2 = q_conv(h,velo,m)/(0.5d0*rho(h)*velo**3)
+    b2 = pi*(3.0d0*gm_mc+8.0d0)/(64.0d0*(gm_mc+1.0d0))
+    c2 = (pi**2*(gm_mc+4.0d0)+16.0d0)/(64.0d0*(gm_mc+1.0d0))
+    heat_coeff = a2*b2/dsqrt(c2)
+  end function heat_coeff
+
+  ! conductive heating q_conv
+  function q_conv(h,velo,m)
+    use mod_nrlmsise00
+    implicit none
+    double precision h,velo,m,q_conv,diameter
+    ! 7.9248 [km/s] is defined sqrt(radius_earth * gravity(at h = 0))
+    q_conv = 110.35d6/dsqrt(diameter(m)*0.5d0)*dsqrt(rho(h)/rho(0.0d0))*(velo/7.9248d3)**3.15d0
+  end function q_conv
+
   ! Mach number
   function mach_num(h,velo)
     use mod_nrlmsise00
@@ -89,6 +111,7 @@ contains
     ss = dsqrt(gamma*gass_const*temp(h)) ! sound speed
     mach_num = velo/ss
   end function mach_num
+
   ! Reynolds number
   function reynolds(h,velo,m)
     use mod_nrlmsise00
@@ -96,6 +119,7 @@ contains
     double precision h,reynolds,velo,m,diameter
     reynolds = rho(h)*velo*diameter(m)/mu(h)
   end function reynolds
+
   ! viscosity coefficient
   function mu(h)
     use mod_nrlmsise00
@@ -110,6 +134,7 @@ contains
   end function mu
 end module mod_coeff
 
+! main program
 program trajectory
   use mod_constant
   use mod_parm, only: injection_speed,injection_angle,dt,tf,m_f,ALT,m_init
@@ -136,19 +161,19 @@ program trajectory
   open(101, file='./coeff.dat')
   open(102, file='./mach_drag.dat')
   open(103, file='./atmos_model.dat')
-  write(100,*) '       Time  Altitude  Velosity'
-  write(101,*) '  Altitude   mach    reynolds     Cd'
+  write(100,*) '       Time  Altitude  Velosity      mass'
+  write(101,*) '  Altitude   mach    reynolds     Cd      Ch'
   write(102,*) '  mach     Cd'
   write(103,*) ' Altitude    density        temp        mu'
 
   do while ((t < tf).and.((r-radius_earth) > 0.0d0).and.(m > m_f))
     ! outputs
     write(100,200) t,(r-radius_earth),velo(r,dr,dth),m
-    write(101,201) (r-radius_earth),mach_num(r-radius_earth,velo(r,dr,dth)),reynolds(r-radius_earth,velo(r,dr,dth),m),drag_coeff(r-radius_earth,velo(r,dr,dth),m)
+    write(101,201) (r-radius_earth),mach_num(r-radius_earth,velo(r,dr,dth)),reynolds(r-radius_earth,velo(r,dr,dth),m),drag_coeff(r-radius_earth,velo(r,dr,dth),m),heat_coeff(r-radius_earth,velo(r,dr,dth),m)
     write(102,202) mach_num(r-radius_earth,velo(r,dr,dth)),drag_coeff(r-radius_earth,velo(r,dr,dth),m)
     write(103,203) (r-radius_earth),rho(r-radius_earth),temp(r-radius_earth),mu(r-radius_earth)
 200 format(e12.4,2(f10.2),e12.4)
-201 format(f10.2,f7.3,e12.4,f7.3)
+201 format(f10.2,f7.3,e12.4,f7.3,e12.4)
 202 format(2(f7.3))
 203 format(f10.2,3(e12.4))
 
@@ -274,17 +299,18 @@ end function func4
 
 ! function for dm/dt
 function func5(t,r,dr,th,dth,m)
-  use mod_constant, only: heat_coeff,radius_earth,shape,abl_heat
+  use mod_constant, only: radius_earth,shape,abl_heat
   use mod_nrlmsise00
+  use mod_coeff
   double precision t,r,dr,th,dth,m,func5,area
-  func5 = -0.5d0*heat_coeff*area(m)*rho(r-radius_earth)*(velo(r,dr,dth)**3)/abl_heat
+  func5 = -0.5d0*heat_coeff(r-radius_earth,velo(r,dr,dth),m)*area(m)*rho(r-radius_earth)*(velo(r,dr,dth)**3)/abl_heat
 end function func5
 
 function velo(r,dr,dth)
   ! function for calculate Velosity
   implicit none
   double precision r,dr,dth,velo
-  velo = dsqrt(dr**2 + r**2 * dth**2)
+  velo = dsqrt(dr**2 + r**2*dth**2)
 end function velo
 
 ! function for calc. Projected Area
