@@ -15,9 +15,11 @@ end module mod_constant
 module mod_parm
   ! module for parameters
   implicit none
-  double precision :: dt,tf,star_density,injection_speed,injection_angle,star_diameter,projected_area,mass_star
-  real :: SEC,ALT,GLAT,GLONG,STL,F107A,F107,AP
-  integer :: IYD,MASS
+  double precision dt,tf,star_density,injection_speed,injection_angle,star_diameter,projected_area,mass_star
+  double precision SEC,ALT,GLAT,GLONG,STL
+  double precision :: F107A, F107 = 150.
+  double precision :: AP = 4.
+  integer IYD,MASS
 end module mod_parm
 
 module mod_nrlmsise00
@@ -28,26 +30,22 @@ module mod_nrlmsise00
   ! press : h -> altitude, output -> pressure [Pa]
 contains
   function rho(h)
-    use mod_parm
+    use mod_parm, only: IYD,SEC,GLAT,GLONG,STL,F107A,F107,AP,MASS
     implicit none
     double precision rho,h
-    real D(9)
-    real T(2)
+    double precision D(9),T(2)
     call METERS(.true.)
-    call GTD7(IYD,SEC,real(h/1.0d3),GLAT,GLONG,STL,150.0e0,150.0e0,4.0e0,MASS,D,T)
-    rho = dble(D(6))
-    return
+    call GTD7(IYD,SEC,h*1d-3,GLAT,GLONG,STL,F107A,F107,AP,MASS,D,T)
+    rho = D(6)
   end function rho
   function temp(h)
-    use mod_parm
+    use mod_parm, only: IYD,SEC,GLAT,GLONG,STL,F107A,F107,AP,MASS
     implicit none
     double precision temp,h
-    real D(9)
-    real T(2)
+    double precision D(9),T(2)
     call METERS(.true.)
-    call GTD7(IYD,SEC,real(h/1.0d3),GLAT,GLONG,STL,150.0e0,150.0e0,4.0e0,MASS,D,T)
-    temp = dble(T(2))
-    return
+    call GTD7(IYD,SEC,h*1d-3,GLAT,GLONG,STL,F107A,F107,AP,MASS,D,T)
+    temp = T(2)
   end function temp
   function press(h)
     use mod_parm
@@ -64,7 +62,6 @@ module mod_coeff
 contains
   ! C_d model (Henderson)
   function drag_coeff(h,velo)
-    use mod_parm
     use mod_nrlmsise00
     implicit none
     double precision h,velo,gamma,temp_w,a1,b1,c1,sa,drag_coeff
@@ -76,11 +73,9 @@ contains
     c1 = 2.0d0 + 2.0d0/sa**2 + 1.058d0/sa*dsqrt(temp_w/temp(h)) - 2.0d0/sa**4
 
     drag_coeff = (a1 + b1*c1)/(1.0d0 + b1)
-    return
   end function drag_coeff
   ! Mach number
   function mach_num(h,velo)
-    use mod_parm
     use mod_nrlmsise00
     implicit none
     double precision h,velo,gamma,gass_const,ss,mach_num
@@ -88,16 +83,14 @@ contains
     gass_const = 286.9d0 ! gass const of Air (M = 28.966[g/mol])
     ss = dsqrt(gamma*gass_const*temp(h)) ! sound speed
     mach_num = velo/ss
-    return
   end function mach_num
   ! Reynolds number
   function reynolds(h,velo)
-    use mod_parm
+    use mod_parm, only: star_diameter
     use mod_nrlmsise00
     implicit none
     double precision h,reynolds,velo
     reynolds = rho(h)*velo*star_diameter/mu(h)
-    return
   end function reynolds
   ! viscosity coefficient
   function mu(h)
@@ -110,19 +103,18 @@ contains
     sutherland = 1.104d2 ! [K]
     ! calc. mu
     mu = mu_0*((temp(h)/temp_0)**1.5d0)*(temp_0+sutherland)/(temp(h)+sutherland)
-    return
   end function mu
 end module mod_coeff
 
 program trajectory
   use mod_constant
-  use mod_parm
+  use mod_parm, only: injection_speed,injection_angle,dt,tf,ALT
   use mod_nrlmsise00
   use mod_coeff
   implicit none
-  double precision :: t0,t,r0,r,dr0,dr,th0,th,dth0,dth
-  double precision :: k1(4),k2(4),k3(4),k4(4)
-  double precision :: func1, func2, func3, func4, velo
+  double precision t,r,dr,th,dth
+  double precision k1(4),k2(4),k3(4),k4(4)
+  double precision func1, func2, func3, func4, velo
 
   ! read run_time parameter.
   call parm
@@ -229,71 +221,56 @@ subroutine parm
   read(5,*) GLONG ! geodetic longtitude
   !GLAT = GLAT*pi/180.0d0 ! [deg.] -> [rad.]
   !GLONG = GLONG*pi/180.0d0 ! [deg.] -> [rad.]
-  STL = SEC/3600.0d0 + GLONG/15.0d0
   write(6,*) 'MASS'
   read(5,*) MASS ! Mass Number (0:temp,48:all)
   write(6,*) 'input complete'
 
   ! variables
-  projected_area = pi/4*star_diameter**2 ! projected area [m^2]
+  STL = SEC/3600.0d0 + GLONG/15.0d0
+  projected_area = pi/4.0d0*star_diameter**2 ! projected area [m^2]
   mass_star = star_density*pi/6.0d0*(star_diameter**3) ! mass = density * volume [kg]
 end subroutine parm
 
 function func1(t,r,dr,th,dth)
   ! function for dr/dt
-  use mod_constant
-  use mod_parm
-  use mod_nrlmsise00
   implicit none
   double precision t,r,dr,th,dth,func1
   func1 = dr
-  return
 end function func1
 
 function func2(t,r,dr,th,dth)
   ! function for d/dt(dr/dt)
   use mod_constant
-  use mod_parm
+  use mod_parm, only: mass_star,projected_area
   use mod_nrlmsise00
   use mod_coeff
   implicit none
-
   double precision t,r,dr,th,dth,func2,velo
-  func2 = -const_gravity*mass_earth/(r*r) - 1/(2.0d0*mass_star)*drag_coeff(r-radius_earth,velo(r,dr,dth))*projected_area*rho(r-radius_earth)*velo(r,dr,dth)*dr + r*dth**2.0d0
-
-  return
+  func2 = -const_gravity*mass_earth/(r*r) - 1.0d0/(2.0d0*mass_star)*drag_coeff(r-radius_earth,velo(r,dr,dth))*projected_area*rho(r-radius_earth)*velo(r,dr,dth)*dr + r*dth**2.0d0
 end function func2
 
 function func3(t,r,dr,th,dth)
   ! function for dth/dt
-  use mod_constant
-  use mod_parm
-  use mod_nrlmsise00
   implicit none
   double precision t,r,dr,th,dth,func3
   func3 = dth
-  return
 end function func3
 
 function func4(t,r,dr,th,dth)
   ! function for d/dt(dth/dt)
   use mod_constant
-  use mod_parm
+  use mod_parm, only: mass_star,projected_area
   use mod_nrlmsise00
   use mod_coeff
   implicit none
   double precision t,r,dr,th,dth,func4,velo
-  func4 = -1/(2.0d0*mass_star*r)*drag_coeff(r-radius_earth,velo(r,dr,dth))*projected_area*rho(r-radius_earth)*velo(r,dr,dth)*r*dth - 2.0d0/r*dr*dth
-  return
+  func4 = -1.0d0/(2.0d0*mass_star*r)*drag_coeff(r-radius_earth,velo(r,dr,dth))*projected_area*rho(r-radius_earth)*velo(r,dr,dth)*r*dth - 2.0d0/r*dr*dth
 end function func4
 
 function velo(r,dr,dth)
   ! function for calculate Velosity
-  use mod_constant
-  use mod_parm
   implicit none
   double precision r,dr,dth,velo
   velo = dsqrt(dr**2 + r**2 * dth**2)
-  return
 end function velo
 

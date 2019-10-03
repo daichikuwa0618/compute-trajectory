@@ -1,12 +1,12 @@
-       1.0d-3             dt: delta t [sec]
+       1.0d-1             dt: delta t [sec]
        1.0d5              tf: finish time [sec]
        1.0d-1             Cd: drag coefficient [-]
        5.0d3              rho: star density [kg/m^3]
        7.33d3             V: injection speed [m/sec]
        0.0d0              angle: injection angle [rad.]
        1.0d-2             d: star diameter [m]
-       20001              IDY : Year and Day as YYDDD
-       0.0                SEC : Universal Time (UTC)
+       1                  IDY : Year and Day as YYDDD
+       0.                 SEC : Universal Time (UTC)
        3.75d5             ALT : altitude (from ground) [m]
        6.0d1              GLAT : geodetic latitude [deg.]
        4.3d1              GLONG : geodetic longitude [deg.]
