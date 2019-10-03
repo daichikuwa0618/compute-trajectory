@@ -18,7 +18,7 @@ end module mod_constant
 module mod_parm
   ! module for parameters
   implicit none
-  double precision dt,tf,star_density,injection_speed,injection_angle,d_init,area_init,m_init
+  double precision dt,tf,m_f,star_density,injection_speed,injection_angle,d_init,area_init,m_init
   double precision drag_coeff_inp,heat_coeff_inp
   double precision SEC,ALT,GLAT,GLONG,STL
   double precision :: F107A = 150.0d0
@@ -112,7 +112,7 @@ end module mod_coeff
 
 program trajectory
   use mod_constant
-  use mod_parm, only: injection_speed,injection_angle,dt,tf,ALT,m_init
+  use mod_parm, only: injection_speed,injection_angle,dt,tf,m_f,ALT,m_init
   use mod_nrlmsise00
   use mod_coeff
   implicit none
@@ -141,7 +141,7 @@ program trajectory
   write(102,*) '  mach     Cd'
   write(103,*) ' Altitude    density        temp        mu'
 
-  do while ((t < tf).and.((r-radius_earth) > 0.0d0).and.(m > 0.0d0))
+  do while ((t < tf).and.((r-radius_earth) > 0.0d0).and.(m > m_f))
     ! outputs
     write(100,200) t,(r-radius_earth),velo(r,dr,dth),m
     write(101,201) (r-radius_earth),mach_num(r-radius_earth,velo(r,dr,dth)),reynolds(r-radius_earth,velo(r,dr,dth),m),drag_coeff(r-radius_earth,velo(r,dr,dth),m)
@@ -200,13 +200,15 @@ end program trajectory
 ! ******************************************************************
 subroutine parm
   use mod_constant
-  use mod_parm, only: dt,tf,drag_coeff_inp,star_density,injection_speed,injection_angle,d_init,m_init,area_init,IYD,SEC,ALT,GLAT,GLONG,STL,MASS
+  use mod_parm, only: dt,tf,m_f,drag_coeff_inp,star_density,injection_speed,injection_angle,d_init,m_init,area_init,IYD,SEC,ALT,GLAT,GLONG,STL,MASS
   implicit none
 
   write(6,*) 'dt :'
   read(5,*) dt ! delta t [s]
-  write(6,*) 'ft :'
+  write(6,*) 't_f :'
   read(5,*) tf ! finish time [s]
+  write(6,*) 'm_f :'
+  read(5,*) m_f ! finish mass [kg]
   write(6,*) 'Cd'
   read(5,*) drag_coeff_inp
   write(6,*) 'dens_star'

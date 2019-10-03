@@ -1,5 +1,6 @@
        1.0d-2             dt: delta t [sec]
        1.0d5              tf: finish time [sec]
+       1.0d-9             m_f: finish mass [kg]
        1.0d-1             Cd: drag coefficient [-]
        5.0d3              rho: star density [kg/m^3]
        7.33d3             V: injection speed [m/sec]
