@@ -866,7 +866,7 @@ c       ADJUST DENSITIES FROM CGS TO KGM
   100 FORMAT(1X,'MASS', I5, '  NOT VALID')
       END
 c-----------------------------------------------------------------------
-      SUBROUTINE METERC(METER)
+      SUBROUTINE METERS(METER)
 c      Convert outputs to Kg & Meters if METER true
       LOGICAL METER
       COMMON/METSEL/IMR
