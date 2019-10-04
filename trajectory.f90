@@ -12,6 +12,7 @@ module mod_constant
   double precision :: radius_earth = 6.371d6 ! radius of the Earth (on red road) [m]
   double precision :: shape = 2.0d0/3.0d0 ! for sphere (0.66666...)
   double precision :: abl_heat = 1.0d6 ! heat for ablation [J/kg]
+  double precision :: bright_coeff = 1.0d0
 end module mod_constant
 
 module mod_parm
@@ -141,9 +142,10 @@ program trajectory
   use mod_nrlmsise00
   use mod_coeff
   implicit none
-  double precision t,r,dr,th,dth,m
+  double precision t,r,dr,th,dth,m,brightness
   double precision k1(5),k2(5),k3(5),k4(5)
   double precision func1,func2,func3,func4,func5,velo,area,diameter
+  double precision altitude,air_dens,air_temp,air_visc,velocity,mach,re_num,c_d,c_h
 
   ! read run_time parameter.
   call parm
@@ -161,21 +163,39 @@ program trajectory
   open(101, file='./coeff.dat')
   open(102, file='./mach_drag.dat')
   open(103, file='./atmos_model.dat')
+  open(104, file='./brightness.dat')
   write(100,*) '       Time  Altitude  Velosity      mass'
   write(101,*) '  Altitude   mach    reynolds     Cd      Ch'
   write(102,*) '  mach     Cd'
   write(103,*) ' Altitude    density        temp        mu'
+  write(104,*) ' Altitude brightness'
 
   do while ((t < tf).and.((r-radius_earth) > 0.0d0).and.(m > m_f))
+    ! calc. parameters
+    altitude = r-radius_earth
+    air_dens = rho(altitude)
+    air_temp = temp(altitude)
+    air_visc = mu(altitude)
+    velocity = velo(r,dr,dth)
+    mach = mach_num(altitude,velocity)
+    re_num = reynolds(altitude,velocity,m)
+    c_d = drag_coeff(altitude,velocity,m)
+    c_h = heat_coeff(altitude,velocity,m)
+
+    ! brightness
+    brightness = -bright_coeff*(0.5d0*velocity**2*func5(t,r,dr,th,dth,m) + m*velocity*dsqrt((func2(t,r,dr,th,dth,m)-r*dth**2)**2 + (r*func4(t,r,dr,th,dth,m)+2.0d0*dr*dth)**2))
+
     ! outputs
-    write(100,200) t,(r-radius_earth),velo(r,dr,dth),m
-    write(101,201) (r-radius_earth),mach_num(r-radius_earth,velo(r,dr,dth)),reynolds(r-radius_earth,velo(r,dr,dth),m),drag_coeff(r-radius_earth,velo(r,dr,dth),m),heat_coeff(r-radius_earth,velo(r,dr,dth),m)
-    write(102,202) mach_num(r-radius_earth,velo(r,dr,dth)),drag_coeff(r-radius_earth,velo(r,dr,dth),m)
-    write(103,203) (r-radius_earth),rho(r-radius_earth),temp(r-radius_earth),mu(r-radius_earth)
+    write(100,200) t,altitude,velocity,m
+    write(101,201) altitude,mach,re_num,c_d,c_h
+    write(102,202) mach,c_d
+    write(103,203) altitude,air_dens,air_temp,air_visc
+    write(104,204) altitude,brightness
 200 format(e12.4,2(f10.2),e12.4)
 201 format(f10.2,f7.3,e12.4,f7.3,e12.4)
 202 format(2(f7.3))
 203 format(f10.2,3(e12.4))
+204 format(f10.2,e12.4)
 
     ! 4th-order runge-ketta
     k1(1) = dt*func1(t,r,dr,th,dth,m)
@@ -217,6 +237,8 @@ program trajectory
   close(100)
   close(101)
   close(102)
+  close(103)
+  close(104)
 
 end program trajectory
 
