@@ -138,7 +138,7 @@ end module mod_coeff
 ! main program
 program trajectory
   use mod_constant
-  use mod_parm, only: injection_speed,injection_angle,dt,tf,m_f,ALT,m_init
+  use mod_parm, only: injection_speed,injection_angle,dt,tf,m_f,ALT,m_init,drag_coeff_inp,heat_coeff_inp
   use mod_nrlmsise00
   use mod_coeff
   implicit none
@@ -179,8 +179,15 @@ program trajectory
     velocity = velo(r,dr,dth)
     mach = mach_num(altitude,velocity)
     re_num = reynolds(altitude,velocity,m)
-    c_d = drag_coeff(altitude,velocity,m)
-    c_h = heat_coeff(altitude,velocity,m)
+    ! use model or constant
+    c_d = drag_coeff_inp
+    if(c_d.lt.0.0d0) then
+      c_d = drag_coeff(altitude,velocity,m)
+    endif
+    c_h = heat_coeff_inp
+    if(c_h.lt.0.0d0) then
+       c_h = heat_coeff(altitude,velocity,m)
+    endif
 
     ! brightness
     brightness = -bright_coeff*(0.5d0*velocity**2*func5(t,r,dr,th,dth,m) + m*velocity*dsqrt((func2(t,r,dr,th,dth,m)-r*dth**2)**2 + (r*func4(t,r,dr,th,dth,m)+2.0d0*dr*dth)**2))
@@ -247,42 +254,56 @@ end program trajectory
 ! ******************************************************************
 subroutine parm
   use mod_constant
-  use mod_parm, only: dt,tf,m_f,drag_coeff_inp,star_density,injection_speed,injection_angle,d_init,m_init,area_init,IYD,SEC,ALT,GLAT,GLONG,STL,MASS
+  use mod_parm, only: dt,tf,m_f,drag_coeff_inp,heat_coeff_inp,star_density,injection_speed,injection_angle,d_init,m_init,area_init,IYD,SEC,ALT,GLAT,GLONG,STL,MASS
   implicit none
 
-  write(6,*) 'dt :'
+  write(6,*) 'dt : '
   read(5,*) dt ! delta t [s]
-  write(6,*) 't_f :'
+  write(6,*) 't_f : '
   read(5,*) tf ! finish time [s]
-  write(6,*) 'm_f :'
+  write(6,*) 'm_f : '
   read(5,*) m_f ! finish mass [kg]
-  write(6,*) 'Cd'
+  write(6,*) 'Cd : '
   read(5,*) drag_coeff_inp
-  write(6,*) 'dens_star'
+  write(6,*) 'Ch : '
+  read(5,*) heat_coeff_inp
+  write(6,*) 'dens_star : '
   read(5,*) star_density
-  write(6,*) 'inj_spee'
+  write(6,*) 'inj_spee : '
   read(5,*) injection_speed
-  write(6,*) 'inj_ang'
+  write(6,*) 'inj_ang : '
   read(5,*) injection_angle
-  write(6,*) 'star_d'
+  write(6,*) 'star_diameter : '
   read(5,*) d_init
-  write(6,*) 'IYD'
+  write(6,*) 'IYD : '
   read(5,*) IYD ! Year and Days
-  write(6,*) 'UTC'
+  write(6,*) 'UTC : '
   read(5,*) SEC ! Universal Time
-  write(6,*) 'ALT'
+  write(6,*) 'ALT : '
   read(5,*) ALT ! altitude
-  write(6,*) 'GLAT'
+  write(6,*) 'GLAT : '
   read(5,*) GLAT ! geodetic latitude
-  write(6,*) 'GLONG'
+  write(6,*) 'GLONG : '
   read(5,*) GLONG ! geodetic longtitude
-  write(6,*) 'MASS'
+  write(6,*) 'MASS : '
   read(5,*) MASS ! Mass Number (0:temp,48:all)
 
   ! variables
   STL = SEC/3600.0d0 + GLONG/15.0d0
   area_init = pi/4.0d0*d_init**2 ! initial projected area [m^2]
   m_init = star_density*pi/6.0d0*(d_init**3) ! mass = density * volume [kg]
+
+  if(drag_coeff_inp.lt.0.0d0) then
+     write(6,*)'C_d follows Hederson model'
+  else
+     write(6,*)'C_d is const. : ', drag_coeff_inp
+  endif
+  if(heat_coeff_inp.lt.0.0d0) then
+     write(6,*)'C_h follows Hederson model'
+  else
+     write(6,*)'C_h is const. : ', heat_coeff_inp
+  endif
+
 end subroutine parm
 
 function func1(t,r,dr,th,dth,m)
@@ -294,12 +315,17 @@ end function func1
 
 function func2(t,r,dr,th,dth,m)
   ! function for d/dt(dr/dt)
+  use mod_parm, only: drag_coeff_inp
   use mod_constant, only: const_gravity,mass_earth,radius_earth
   use mod_nrlmsise00
   use mod_coeff
   implicit none
-  double precision t,r,dr,th,dth,m,func2,velo,area
-  func2 = -const_gravity*mass_earth/(r*r) - 1.0d0/(2.0d0*m)*drag_coeff(r-radius_earth,velo(r,dr,dth),m)*area(m)*rho(r-radius_earth)*velo(r,dr,dth)*dr + r*dth**2.0d0
+  double precision t,r,dr,th,dth,m,func2,velo,area,c_d
+  c_d = drag_coeff_inp
+  if(c_d.lt.0.0d0) then
+    c_d = drag_coeff(r-radius_earth,velo(r,dr,dth),m)
+  endif
+  func2 = -const_gravity*mass_earth/(r*r) - 1.0d0/(2.0d0*m)*c_d*area(m)*rho(r-radius_earth)*velo(r,dr,dth)*dr + r*dth**2.0d0
 end function func2
 
 function func3(t,r,dr,th,dth,m)
@@ -311,21 +337,31 @@ end function func3
 
 function func4(t,r,dr,th,dth,m)
   ! function for d/dt(dth/dt)
+  use mod_parm, only: drag_coeff_inp
   use mod_constant, only: radius_earth
   use mod_nrlmsise00
   use mod_coeff
   implicit none
-  double precision t,r,dr,th,dth,m,func4,velo,area
-  func4 = -1.0d0/(2.0d0*m*r)*drag_coeff(r-radius_earth,velo(r,dr,dth),m)*area(m)*rho(r-radius_earth)*velo(r,dr,dth)*r*dth - 2.0d0/r*dr*dth
+  double precision t,r,dr,th,dth,m,func4,velo,area,c_d
+  c_d = drag_coeff_inp
+  if(c_d.lt.0.0d0) then
+     c_d = drag_coeff(r-radius_earth,velo(r,dr,dth),m)
+  endif
+  func4 = -1.0d0/(2.0d0*m*r)*c_d*area(m)*rho(r-radius_earth)*velo(r,dr,dth)*r*dth - 2.0d0/r*dr*dth
 end function func4
 
 ! function for dm/dt
 function func5(t,r,dr,th,dth,m)
+  use mod_parm, only: heat_coeff_inp
   use mod_constant, only: radius_earth,shape,abl_heat
   use mod_nrlmsise00
   use mod_coeff
-  double precision t,r,dr,th,dth,m,func5,area
-  func5 = -0.5d0*heat_coeff(r-radius_earth,velo(r,dr,dth),m)*area(m)*rho(r-radius_earth)*(velo(r,dr,dth)**3)/abl_heat
+  double precision t,r,dr,th,dth,m,func5,area,c_h
+  c_h = heat_coeff_inp
+  if(c_h.le.0.0d0) then
+     c_h = heat_coeff(r-radius_earth,velo(r,dr,dth),m)
+  endif
+  func5 = -0.5d0*c_h*area(m)*rho(r-radius_earth)*(velo(r,dr,dth)**3)/abl_heat
 end function func5
 
 function velo(r,dr,dth)
