@@ -171,73 +171,73 @@ program trajectory
   write(104,*) ' Altitude brightness'
 
   do while ((t < tf).and.((r-radius_earth) > 0.0d0).and.(m > m_f))
-    ! calc. parameters
-    altitude = r-radius_earth
-    air_dens = rho(altitude)
-    air_temp = temp(altitude)
-    air_visc = mu(altitude)
-    velocity = velo(r,dr,dth)
-    mach = mach_num(altitude,velocity)
-    re_num = reynolds(altitude,velocity,m)
-    ! use model or constant
-    c_d = drag_coeff_inp
-    if(c_d.lt.0.0d0) then
-      c_d = drag_coeff(altitude,velocity,m)
-    endif
-    c_h = heat_coeff_inp
-    if(c_h.lt.0.0d0) then
-       c_h = heat_coeff(altitude,velocity,m)
-    endif
+     ! calc. parameters
+     altitude = r-radius_earth
+     air_dens = rho(altitude)
+     air_temp = temp(altitude)
+     air_visc = mu(altitude)
+     velocity = velo(r,dr,dth)
+     mach = mach_num(altitude,velocity)
+     re_num = reynolds(altitude,velocity,m)
+     ! use model or constant
+     c_d = drag_coeff_inp
+     if(c_d.lt.0.0d0) then
+        c_d = drag_coeff(altitude,velocity,m)
+     endif
+     c_h = heat_coeff_inp
+     if(c_h.lt.0.0d0) then
+        c_h = heat_coeff(altitude,velocity,m)
+     endif
 
-    ! brightness
-    brightness = -bright_coeff*(0.5d0*velocity**2*func5(t,r,dr,th,dth,m) + m*velocity*dsqrt((func2(t,r,dr,th,dth,m)-r*dth**2)**2 + (r*func4(t,r,dr,th,dth,m)+2.0d0*dr*dth)**2))
+     ! brightness
+     brightness = -bright_coeff*(0.5d0*velocity**2*func5(t,r,dr,th,dth,m) + m*velocity*dsqrt((func2(t,r,dr,th,dth,m)-r*dth**2)**2 + (r*func4(t,r,dr,th,dth,m)+2.0d0*dr*dth)**2))
 
-    ! outputs
-    write(100,200) t,altitude,velocity,m
-    write(101,201) altitude,mach,re_num,c_d,c_h
-    write(102,202) mach,c_d
-    write(103,203) altitude,air_dens,air_temp,air_visc
-    write(104,204) altitude,brightness
-200 format(e12.4,2(f10.2),e12.4)
-201 format(f10.2,f7.3,e12.4,f7.3,e12.4)
-202 format(2(f7.3))
-203 format(f10.2,3(e12.4))
-204 format(f10.2,e12.4)
+     ! outputs
+     write(100,200) t,altitude,velocity,m
+     write(101,201) altitude,mach,re_num,c_d,c_h
+     write(102,202) mach,c_d
+     write(103,203) altitude,air_dens,air_temp,air_visc
+     write(104,204) altitude,brightness
+200  format(e12.4,2(f10.2),e12.4)
+201  format(f10.2,f7.3,e12.4,f7.3,e12.4)
+202  format(2(f7.3))
+203  format(f10.2,3(e12.4))
+204  format(f10.2,e12.4)
 
-    ! 4th-order runge-ketta
-    k1(1) = dt*func1(t,r,dr,th,dth,m)
-    k1(2) = dt*func2(t,r,dr,th,dth,m)
-    k1(3) = dt*func3(t,r,dr,th,dth,m)
-    k1(4) = dt*func4(t,r,dr,th,dth,m)
-    k1(5) = dt*func5(t,r,dr,th,dth,m)
+     ! 4th-order runge-ketta
+     k1(1) = dt*func1(t,r,dr,th,dth,m)
+     k1(2) = dt*func2(t,r,dr,th,dth,m)
+     k1(3) = dt*func3(t,r,dr,th,dth,m)
+     k1(4) = dt*func4(t,r,dr,th,dth,m)
+     k1(5) = dt*func5(t,r,dr,th,dth,m)
 
-    k2(1) = dt*func1(t+dt/2.0d0,r+k1(1)/2.0d0,dr+k1(2)/2.0d0,th+k1(3)/2.0d0,dth+k1(4)/2.0d0,m+k1(5)/2.0d0)
-    k2(2) = dt*func2(t+dt/2.0d0,r+k1(1)/2.0d0,dr+k1(2)/2.0d0,th+k1(3)/2.0d0,dth+k1(4)/2.0d0,m+k1(5)/2.0d0)
-    k2(3) = dt*func3(t+dt/2.0d0,r+k1(1)/2.0d0,dr+k1(2)/2.0d0,th+k1(3)/2.0d0,dth+k1(4)/2.0d0,m+k1(5)/2.0d0)
-    k2(4) = dt*func4(t+dt/2.0d0,r+k1(1)/2.0d0,dr+k1(2)/2.0d0,th+k1(3)/2.0d0,dth+k1(4)/2.0d0,m+k1(5)/2.0d0)
-    k2(5) = dt*func5(t+dt/2.0d0,r+k1(1)/2.0d0,dr+k1(2)/2.0d0,th+k1(3)/2.0d0,dth+k1(4)/2.0d0,m+k1(5)/2.0d0)
+     k2(1) = dt*func1(t+dt/2.0d0,r+dt*k1(1)/2.0d0,dr+dt*k1(2)/2.0d0,th+dt*k1(3)/2.0d0,dth+dt*k1(4)/2.0d0,m+dt*k1(5)/2.0d0)
+     k2(2) = dt*func2(t+dt/2.0d0,r+dt*k1(1)/2.0d0,dr+dt*k1(2)/2.0d0,th+dt*k1(3)/2.0d0,dth+dt*k1(4)/2.0d0,m+dt*k1(5)/2.0d0)
+     k2(3) = dt*func3(t+dt/2.0d0,r+dt*k1(1)/2.0d0,dr+dt*k1(2)/2.0d0,th+dt*k1(3)/2.0d0,dth+dt*k1(4)/2.0d0,m+dt*k1(5)/2.0d0)
+     k2(4) = dt*func4(t+dt/2.0d0,r+dt*k1(1)/2.0d0,dr+dt*k1(2)/2.0d0,th+dt*k1(3)/2.0d0,dth+dt*k1(4)/2.0d0,m+dt*k1(5)/2.0d0)
+     k2(5) = dt*func5(t+dt/2.0d0,r+dt*k1(1)/2.0d0,dr+dt*k1(2)/2.0d0,th+dt*k1(3)/2.0d0,dth+dt*k1(4)/2.0d0,m+dt*k1(5)/2.0d0)
 
-    k3(1) = dt*func1(t+dt/2.0d0,r+k2(1)/2.0d0,dr+k2(2)/2.0d0,th+k2(3)/2.0d0,dth+k2(4)/2.0d0,m+k2(5)/2.0d0)
-    k3(2) = dt*func2(t+dt/2.0d0,r+k2(1)/2.0d0,dr+k2(2)/2.0d0,th+k2(3)/2.0d0,dth+k2(4)/2.0d0,m+k2(5)/2.0d0)
-    k3(3) = dt*func3(t+dt/2.0d0,r+k2(1)/2.0d0,dr+k2(2)/2.0d0,th+k2(3)/2.0d0,dth+k2(4)/2.0d0,m+k2(5)/2.0d0)
-    k3(4) = dt*func4(t+dt/2.0d0,r+k2(1)/2.0d0,dr+k2(2)/2.0d0,th+k2(3)/2.0d0,dth+k2(4)/2.0d0,m+k2(5)/2.0d0)
-    k3(5) = dt*func5(t+dt/2.0d0,r+k2(1)/2.0d0,dr+k2(2)/2.0d0,th+k2(3)/2.0d0,dth+k2(4)/2.0d0,m+k2(5)/2.0d0)
+     k3(1) = dt*func1(t+dt/2.0d0,r+dt*k2(1)/2.0d0,dr+dt*k2(2)/2.0d0,th+dt*k2(3)/2.0d0,dth+dt*k2(4)/2.0d0,m+dt*k2(5)/2.0d0)
+     k3(2) = dt*func2(t+dt/2.0d0,r+dt*k2(1)/2.0d0,dr+dt*k2(2)/2.0d0,th+dt*k2(3)/2.0d0,dth+dt*k2(4)/2.0d0,m+dt*k2(5)/2.0d0)
+     k3(3) = dt*func3(t+dt/2.0d0,r+dt*k2(1)/2.0d0,dr+dt*k2(2)/2.0d0,th+dt*k2(3)/2.0d0,dth+dt*k2(4)/2.0d0,m+dt*k2(5)/2.0d0)
+     k3(4) = dt*func4(t+dt/2.0d0,r+dt*k2(1)/2.0d0,dr+dt*k2(2)/2.0d0,th+dt*k2(3)/2.0d0,dth+dt*k2(4)/2.0d0,m+dt*k2(5)/2.0d0)
+     k3(5) = dt*func5(t+dt/2.0d0,r+dt*k2(1)/2.0d0,dr+dt*k2(2)/2.0d0,th+dt*k2(3)/2.0d0,dth+dt*k2(4)/2.0d0,m+dt*k2(5)/2.0d0)
 
-    k4(1) = dt*func1(t+dt,r+k3(1),dr+k3(2),th+k3(3),dth+k3(4),m+k3(5))
-    k4(2) = dt*func2(t+dt,r+k3(1),dr+k3(2),th+k3(3),dth+k3(4),m+k3(5))
-    k4(3) = dt*func3(t+dt,r+k3(1),dr+k3(2),th+k3(3),dth+k3(4),m+k3(5))
-    k4(4) = dt*func4(t+dt,r+k3(1),dr+k3(2),th+k3(3),dth+k3(4),m+k3(5))
-    k4(5) = dt*func5(t+dt,r+k3(1),dr+k3(2),th+k3(3),dth+k3(4),m+k3(5))
+     k4(1) = dt*func1(t+dt,r+dt*k3(1),dr+dt*k3(2),th+dt*k3(3),dth+dt*k3(4),m+dt*k3(5))
+     k4(2) = dt*func2(t+dt,r+dt*k3(1),dr+dt*k3(2),th+dt*k3(3),dth+dt*k3(4),m+dt*k3(5))
+     k4(3) = dt*func3(t+dt,r+dt*k3(1),dr+dt*k3(2),th+dt*k3(3),dth+dt*k3(4),m+dt*k3(5))
+     k4(4) = dt*func4(t+dt,r+dt*k3(1),dr+dt*k3(2),th+dt*k3(3),dth+dt*k3(4),m+dt*k3(5))
+     k4(5) = dt*func5(t+dt,r+dt*k3(1),dr+dt*k3(2),th+dt*k3(3),dth+dt*k3(4),m+dt*k3(5))
 
-    ! calc. next step
-    r   = r   + (k1(1) + 2.0d0*k2(1) + 2.0d0*k3(1) + k4(1))/6.0d0
-    dr  = dr  + (k1(2) + 2.0d0*k2(2) + 2.0d0*k3(2) + k4(2))/6.0d0
-    th  = th  + (k1(3) + 2.0d0*k2(3) + 2.0d0*k3(3) + k4(3))/6.0d0
-    dth = dth + (k1(4) + 2.0d0*k2(4) + 2.0d0*k3(4) + k4(4))/6.0d0
-    m   = m   + (k1(5) + 2.0d0*k2(5) + 2.0d0*k3(5) + k4(5))/6.0d0
+     ! calc. next step
+     r   = r   + (k1(1) + 2.0d0*k2(1) + 2.0d0*k3(1) + k4(1))/6.0d0
+     dr  = dr  + (k1(2) + 2.0d0*k2(2) + 2.0d0*k3(2) + k4(2))/6.0d0
+     th  = th  + (k1(3) + 2.0d0*k2(3) + 2.0d0*k3(3) + k4(3))/6.0d0
+     dth = dth + (k1(4) + 2.0d0*k2(4) + 2.0d0*k3(4) + k4(4))/6.0d0
+     m   = m   + (k1(5) + 2.0d0*k2(5) + 2.0d0*k3(5) + k4(5))/6.0d0
 
-    ! integration
-    t = t + dt
+     ! integration
+     t = t + dt
   end do
 
   ! close files
@@ -323,7 +323,7 @@ function func2(t,r,dr,th,dth,m)
   double precision t,r,dr,th,dth,m,func2,velo,area,c_d
   c_d = drag_coeff_inp
   if(c_d.lt.0.0d0) then
-    c_d = drag_coeff(r-radius_earth,velo(r,dr,dth),m)
+     c_d = drag_coeff(r-radius_earth,velo(r,dr,dth),m)
   endif
   func2 = -const_gravity*mass_earth/(r*r) - 1.0d0/(2.0d0*m)*c_d*area(m)*rho(r-radius_earth)*velo(r,dr,dth)*dr + r*dth**2.0d0
 end function func2
@@ -358,7 +358,7 @@ function func5(t,r,dr,th,dth,m)
   use mod_coeff
   double precision t,r,dr,th,dth,m,func5,area,c_h
   c_h = heat_coeff_inp
-  if(c_h.le.0.0d0) then
+  if(c_h.lt.0.0d0) then
      c_h = heat_coeff(r-radius_earth,velo(r,dr,dth),m)
   endif
   func5 = -0.5d0*c_h*area(m)*rho(r-radius_earth)*(velo(r,dr,dth)**3)/abl_heat
