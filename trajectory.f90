@@ -97,7 +97,8 @@ contains
     implicit none
     double precision velo,m,bright_coeff
     ! velocity has unit [km/s]
-    bright_coeff = dexp(-2.338d0+dlog(velo/1.0d3)+1.15d0*dtanh(0.38d0*dlog(m)))
+    lnv = dlog(velo/1d3)
+    bright_coeff = dexp(-2.338d0+lnv+1.15d0*dtanh(0.38d0*dlog(m)))
   end function bright_coeff
 
   ! conductive heating q_conv
@@ -149,7 +150,7 @@ program trajectory
   use mod_nrlmsise00
   use mod_coeff
   implicit none
-  double precision t,r,dr,th,dth,m,brightness,magnitude
+  double precision t,r,dr,th,dth,m,brightness,magnitude,luminosity
   double precision k1(5),k2(5),k3(5),k4(5)
   double precision func1,func2,func3,func4,func5,velo,area,diameter,dvdt
   double precision altitude,air_dens,air_temp,air_visc,velocity,mach,re_num,c_d,c_h,tau
@@ -180,7 +181,7 @@ program trajectory
   write(101,*) '  Altitude   mach    reynolds     Cd      Ch'
   write(102,*) '  mach     Cd'
   write(103,*) ' Altitude    density        temp        mu'
-  write(104,*) ' Altitude brightness    tau  magnitude'
+  write(104,*) ' Altitude brightness    tau  magnitude  luminosity'
 
   do while ((t < tf).and.((r-radius_earth) > 0d0).and.(m > m_f))
      lat      = SLAT + (th*180.d0/pi)*direc_lat
@@ -214,18 +215,19 @@ program trajectory
      brightness = -tau*(0.5d0*velocity**2*func5(t,r,dr,th,dth,m) + m*velocity*dvdt)
      brightness = dmax1(brightness,1.0d-10)
      magnitude  = 24.3d0 - 2.5d0*dlog10(brightness*1.d7) ! brightness has cgs Unit
+     luminosity = brightness/(4*pi*altitude**2)
 
      ! outputs
      write(100,200) t,altitude,velocity,m
      write(101,201) altitude,mach,re_num,c_d,c_h
      write(102,202) mach,c_d
      write(103,203) altitude,air_dens,air_temp,air_visc
-     write(104,204) altitude,brightness,tau,magnitude
+     write(104,204) altitude,brightness,tau,magnitude,luminosity
 200  format(e12.4,2(f10.2),e12.4)
 201  format(f10.2,f7.3,e12.4,f7.3,e12.4)
 202  format(2(f7.3))
 203  format(f10.2,3(e12.4))
-204  format(f10.2,3e12.4)
+204  format(f10.2,4e12.4)
 
      ! 4th-order runge-ketta
      k1(1) = dt*func1(t,r,dr,th,dth,m)
@@ -422,4 +424,3 @@ function diameter(m)
   double precision diameter,area,m
   diameter = 2d0*dsqrt(area(m)/pi)
 end function diameter
-
