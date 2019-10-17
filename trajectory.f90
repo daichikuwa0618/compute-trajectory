@@ -95,7 +95,7 @@ contains
   ! tau model
   function bright_coeff(velo,m)
     implicit none
-    double precision velo,m,bright_coeff
+    double precision velo,m,bright_coeff,lnv
     ! velocity has unit [km/s]
     lnv = dlog(velo/1d3)
     bright_coeff = dexp(-2.338d0+lnv+1.15d0*dtanh(0.38d0*dlog(m)))
@@ -155,6 +155,7 @@ program trajectory
   double precision func1,func2,func3,func4,func5,velo,area,diameter,dvdt
   double precision altitude,air_dens,air_temp,air_visc,velocity,mach,re_num,c_d,c_h,tau
   double precision velo_last1,velo_last2
+  double precision max_t,max_h,max_bright,max_lumi,max_dens,max_temp,max_visc,max_velo,max_rey,max_cd
 
   ! read run_time parameter.
   call parm
@@ -217,6 +218,20 @@ program trajectory
      magnitude  = 24.3d0 - 2.5d0*dlog10(brightness*1.d7) ! brightness has cgs Unit
      luminosity = brightness/(4*pi*altitude**2)
 
+     max_bright = 1d-30
+     if(brightness.gt.max_bright) then
+        max_t      = t
+        max_bright = brightness
+        max_dens   = air_dens
+        max_temp   = air_temp
+        max_velo   = velocity
+        max_rey    = re_num
+        max_h      = altitude
+        max_visc   = air_visc
+        max_cd     = c_d
+        max_lumi   = luminosity
+     end if
+
      ! outputs
      write(100,200) t,altitude,velocity,m
      write(101,201) altitude,mach,re_num,c_d,c_h
@@ -264,6 +279,12 @@ program trajectory
      ! integration
      t = t + dt
   end do
+
+  open(105,file='./max_bright.dat')
+  write(105,*)'        Time    Altitude  Brightness  Luminosity     Density        Temp          mu    Velocity    Reynolds          Cd'
+  write(105,205)max_t,max_h,max_bright,max_lumi,max_dens,max_temp,max_visc,max_velo,max_rey,max_cd
+205 format(99e12.4)
+  close(105)
 
   ! close files
   close(100)
