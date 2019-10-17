@@ -155,7 +155,7 @@ program trajectory
   double precision func1,func2,func3,func4,func5,velo,area,diameter,dvdt
   double precision altitude,air_dens,air_temp,air_visc,velocity,mach,re_num,c_d,c_h,tau
   double precision velo_last1,velo_last2
-  double precision max_t,max_h,max_bright,max_lumi,max_dens,max_temp,max_visc,max_velo,max_rey,max_cd
+  double precision max_t,max_h,max_bright,max_lumi,max_dens,max_temp,max_visc,max_velo,max_rey,max_cd,max_m,max_d
 
   ! read run_time parameter.
   call parm
@@ -171,6 +171,7 @@ program trajectory
   m          = m_init
   velo_last1 = injection_speed
   velo_last2 = injection_speed ! if these = 0, dvdt becomes very large.
+  max_bright = 1d-30
 
   ! output data
   open(100, file='./out.dat')
@@ -218,7 +219,6 @@ program trajectory
      magnitude  = 24.3d0 - 2.5d0*dlog10(brightness*1.d7) ! brightness has cgs Unit
      luminosity = brightness/(4*pi*altitude**2)
 
-     max_bright = 1d-30
      if(brightness.gt.max_bright) then
         max_t      = t
         max_bright = brightness
@@ -230,6 +230,8 @@ program trajectory
         max_visc   = air_visc
         max_cd     = c_d
         max_lumi   = luminosity
+        max_m      = m
+        max_d      = diameter(m)
      end if
 
      ! outputs
@@ -281,8 +283,10 @@ program trajectory
   end do
 
   open(105,file='./max_bright.dat')
-  write(105,*)'        Time    Altitude  Brightness  Luminosity     Density        Temp          mu    Velocity    Reynolds          Cd'
-  write(105,205)max_t,max_h,max_bright,max_lumi,max_dens,max_temp,max_visc,max_velo,max_rey,max_cd
+  write(105,*)'       Time    Altitude  Brightness  Luminosity     Density        Temp'
+  write(105,205)max_t,max_h,max_bright,max_lumi,max_dens,max_temp
+  write(105,*)'         mu    Velocity    Reynolds          Cd           m    Diameter'
+  write(105,205)max_visc,max_velo,max_rey,max_cd,max_m,max_d
 205 format(99e12.4)
   close(105)
 
