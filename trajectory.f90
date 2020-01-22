@@ -21,9 +21,9 @@ module mod_parm
   double precision drag_coeff_inp,heat_coeff_inp,bright_coeff_inp
   double precision SEC,ALT,SLAT,SLONG,GLAT,GLONG,direc_lat,direc_long,STL
   double precision lat,long
-  double precision :: F107A = 150d0
-  double precision :: F107  = 150d0
-  double precision :: AP = 4d0
+  double precision :: F107A = 240d0
+  double precision :: F107  = 240d0
+  double precision :: AP = 40d0
   integer IYD,MASS
 end module mod_parm
 
@@ -141,6 +141,20 @@ contains
     ! calc. mu
     mu         = mu_0*((temp(h)/temp_0)**1.5d0)*(temp_0+sutherland)/(temp(h)+sutherland)
   end function mu
+
+  ! Knudsen number
+  function knud(h,m)
+    use mod_nrlmsise00
+    use mod_constant, only:pi
+    implicit none
+    double precision h,m,kb,mass,knud,mfp,therm_velo,diameter
+    kb         = 1.38064852d-23 ! boltzmann const., [m2kg/s2/K]
+    mass       = 4.80995d-26 ! mass of 1 molcular of Air [kg]
+    therm_velo = dsqrt(8d0*kb*temp(h)/mass/pi)
+    mfp        = 3d0*mu(h)/rho(h)/therm_velo ! mean free path [m]
+    knud       = mfp/diameter(m)
+  end function knud
+
 end module mod_coeff
 
 ! main program
@@ -153,9 +167,10 @@ program trajectory
   double precision t,r,dr,th,dth,m,brightness,magnitude,luminosity
   double precision k1(5),k2(5),k3(5),k4(5)
   double precision func1,func2,func3,func4,func5,velo,area,diameter,dvdt
-  double precision altitude,air_dens,air_temp,air_visc,velocity,mach,re_num,c_d,c_h,tau
+  double precision altitude,air_dens,air_temp,air_visc,velocity,mach,re_num,c_d,c_h,tau,knudsen
   double precision velo_last1,velo_last2
   double precision max_t,max_h,max_bright,max_lumi,max_dens,max_temp,max_visc,max_velo,max_rey,max_cd,max_m,max_d
+  double precision min_knud,knud_t,knud_h,knud_bright,knud_dens,knud_temp,knud_visc,knud_velo,knud_rey,knud_cd,knud_m,knud_d
 
   ! read run_time parameter.
   call parm
@@ -172,6 +187,7 @@ program trajectory
   velo_last1 = injection_speed
   velo_last2 = injection_speed ! if these = 0, dvdt becomes very large.
   max_bright = 1d-30
+  min_knud   = 1d30
 
   ! output data
   open(100, file='./out.dat')
@@ -180,10 +196,12 @@ program trajectory
   open(103, file='./atmos_model.dat')
   open(104, file='./brightness.dat')
   write(100,*) '       Time  Altitude  Velosity      mass'
-  write(101,*) '  Altitude   mach    reynolds     Cd      Ch'
+  write(101,*) '  Altitude   mach    reynolds     Cd      Ch     knudsen'
   write(102,*) '  mach     Cd'
   write(103,*) ' Altitude    density        temp        mu'
   write(104,*) ' Altitude brightness    tau  magnitude  luminosity'
+
+  write(*,*) 'START COMPUTATION'
 
   do while ((t < tf).and.((r-radius_earth) > 0d0).and.(m > m_f))
      lat      = SLAT + (th*180.d0/pi)*direc_lat
@@ -196,6 +214,7 @@ program trajectory
      velocity = velo(r,dr,dth)
      mach     = mach_num(altitude,velocity)
      re_num   = reynolds(altitude,velocity,m)
+     knudsen  = knud(altitude,m)
      ! use model or constant
      c_d = drag_coeff_inp
      if(c_d.lt.0d0) then
@@ -219,6 +238,20 @@ program trajectory
      magnitude  = 24.3d0 - 2.5d0*dlog10(brightness*1.d7) ! brightness has cgs Unit
      luminosity = brightness/(4*pi*altitude**2)
 
+     if(knudsen.lt.min_knud) then
+        knud_t      = t
+        knud_bright = brightness
+        knud_dens   = air_dens
+        knud_temp   = air_temp
+        knud_velo   = velocity
+        knud_rey    = re_num
+        knud_h      = altitude
+        knud_visc   = air_visc
+        knud_cd     = c_d
+        min_knud   = knudsen
+        knud_m      = m
+        knud_d      = diameter(m)
+     end if
      if(brightness.gt.max_bright) then
         max_t      = t
         max_bright = brightness
@@ -236,12 +269,12 @@ program trajectory
 
      ! outputs
      write(100,200) t,altitude,velocity,m
-     write(101,201) altitude,mach,re_num,c_d,c_h
+     write(101,201) altitude,mach,re_num,c_d,c_h,knudsen
      write(102,202) mach,c_d
      write(103,203) altitude,air_dens,air_temp,air_visc
      write(104,204) altitude,brightness,tau,magnitude,luminosity
 200  format(e12.4,2(f10.2),e12.4)
-201  format(f10.2,f7.3,e12.4,f7.3,e12.4)
+201  format(f10.2,f7.3,e12.4,f7.3,2e12.4)
 202  format(2(f7.3))
 203  format(f10.2,3(e12.4))
 204  format(f10.2,4e12.4)
@@ -282,6 +315,13 @@ program trajectory
      t = t + dt
   end do
 
+  open(106,file='./min_knud.dat')
+  write(106,*)'       Time    Altitude  Brightness     Knudsen     Density        Temp'
+  write(106,206)knud_t,knud_h,knud_bright,min_knud,knud_dens,knud_temp
+  write(106,*)'         mu    Velocity    Reynolds          Cd           m    Diameter'
+  write(106,206)knud_visc,knud_velo,knud_rey,knud_cd,knud_m,knud_d
+206 format(99e12.4)
+  close(105)
   open(105,file='./max_bright.dat')
   write(105,*)'       Time    Altitude  Brightness  Luminosity     Density        Temp'
   write(105,205)max_t,max_h,max_bright,max_lumi,max_dens,max_temp
@@ -419,7 +459,7 @@ function func5(t,r,dr,th,dth,m)
   use mod_constant, only: radius_earth,shape,abl_heat
   use mod_nrlmsise00
   use mod_coeff
-  double precision t,r,dr,th,dth,m,func5,area,c_h
+  double precision t,r,dr,th,dth,m,func5,area,c_h,velo
   c_h = heat_coeff_inp
   if(c_h.lt.0d0) then
      c_h = heat_coeff(r-radius_earth,velo(r,dr,dth),m)
