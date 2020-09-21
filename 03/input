@@ -1,8 +1,8 @@
-       1.0d-2             dt: delta t [sec]
+       1.0d-1             dt: delta t [sec]
        1.0d5              tf: finish time [sec]
-       1.0d-7             m_f: finish mass [kg]
+       1.0d-9             m_f: finish mass [kg]
       -2.0d0              Cd: drag coeff. [-] (>=0 : const., <0 : use model)
-      -1.0d0              Ch: heat coeff. [-] (>0 : const., =0 : no abl., <0 : use model)
+       0.0d0              Ch: heat coeff. [-] (>0 : const., =0 : no abl., <0 : use model)
       -1.0d0              tau : bright coeff. [-] (>0 : const., <0 : use model)
        5.0d3              rho: star density [kg/m^3]
        7.33d3             V: injection speed [m/sec]
@@ -16,5 +16,3 @@
        3.4391605d1        goalLAT : geodetic latitude [deg.]
        1.32451616d2       goalLONG : geodetic longitude [deg.]
        48                 MASS : Mass number in NRMSISE-00 (0:temp., 48:for all)
-       1.0                heat flux fix coeff: q*this
-       .true.             DSMC fix on?

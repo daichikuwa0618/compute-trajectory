@@ -18,13 +18,14 @@ module mod_parm
   ! module for parameters
   implicit none
   double precision dt,tf,m_f,star_density,injection_speed,injection_angle,d_init,area_init,m_init
-  double precision drag_coeff_inp,heat_coeff_inp,bright_coeff_inp
+  double precision drag_coeff_inp,heat_coeff_inp,bright_coeff_inp,heat_flux_fix_coeff
   double precision SEC,ALT,SLAT,SLONG,GLAT,GLONG,direc_lat,direc_long,STL
   double precision lat,long
   double precision :: F107A = 240d0
   double precision :: F107  = 240d0
   double precision :: AP = 40d0
   integer IYD,MASS
+  logical dsmc_fix
 end module mod_parm
 
 module mod_nrlmsise00
@@ -65,9 +66,77 @@ end module mod_nrlmsise00
 module mod_coeff
   implicit none
 contains
+  ! conductive heating q_conv DKR model
+  function q_conv_real(h,velo,m)
+    use mod_nrlmsise00
+    use mod_parm, only: heat_flux_fix_coeff,dsmc_fix
+    implicit none
+    double precision h,velo,m,q_conv_real,diameter
+    ! 7.9248 [km/s] is defined sqrt(radius_earth * gravity(at h = 0))
+    q_conv_real = 110.35d6/dsqrt(diameter(m)*0.5d0)*dsqrt(rho(h)/rho(0d0))*(velo/7.9248d3)**3.15d0
+    q_conv_real = heat_flux_fix_coeff * q_conv_real
+  end function q_conv_real
+  function q_conv(h,velo,m)
+    use mod_nrlmsise00
+    use mod_parm, only: heat_flux_fix_coeff,dsmc_fix
+    implicit none
+    double precision h,velo,m,q_conv,diameter
+    ! 7.9248 [km/s] is defined sqrt(radius_earth * gravity(at h = 0))
+    q_conv = 110.35d6/dsqrt(diameter(m)*0.5d0)*dsqrt(rho(h)/rho(0d0))*(velo/7.9248d3)**3.15d0
+    q_conv = heat_flux_fix_coeff * q_conv
+
+    ! kn > 0.1 で補正する
+    if (knud(h,m).ge.1.0d-1) then
+      q_conv = q_conv*(10**(-0.4062*log10(knud(h,m)-0.3481)))
+    end if
+
+    !if (dsmc_fix) then
+    !  if (knud(h,m).ge.1d6) then
+    !    q_conv = q_conv*8.13d-4
+    !  elseif (knud(h,m).ge.1d5) then
+    !    q_conv = q_conv*2.41d-3
+    !  elseif (knud(h,m).ge.1d4) then
+    !    q_conv = q_conv*2.36d-3
+    !  elseif (knud(h,m).ge.1d3) then
+    !    q_conv = q_conv*6.94d-3
+    !  elseif (knud(h,m).ge.1d2) then
+    !    q_conv = q_conv*2.59d-2
+    !  elseif (knud(h,m).ge.1d1) then
+    !    q_conv = q_conv*7.35d-2
+    !  elseif (knud(h,m).ge.2d0) then
+    !    q_conv = q_conv*1.82d-1
+    !  elseif (knud(h,m).ge.1d0) then
+    !    q_conv = q_conv*3.66d-1
+    !  elseif (knud(h,m).ge.5d-1) then
+    !    q_conv = q_conv*4.98d-1
+    !  elseif (knud(h,m).ge.2d-1) then
+    !    q_conv = q_conv*6.96d-1
+    !  ! elseif (knud(h,m).ge.8d-2) then
+    !  !   q_conv = q_conv*1.04
+    !  else
+    !    stop 'stop'
+    !  end if
+    !end if
+  end function q_conv
+
   ! C_d model (Henderson)
+  function drag_coeff_real(h,velo,m)
+    use mod_nrlmsise00
+    use mod_parm, only: dsmc_fix
+    implicit none
+    double precision h,velo,m,gamma,temp_w,a1,b1,c1,sa,drag_coeff_real
+    gamma  = 1.4d0 ! gas constant
+    temp_w = 3.0d3 ! wall temperature [K]
+    a1     = 0.9d0 + 0.34d0/mach_num(h,velo)**2
+    b1     = 1.86d0*dsqrt(mach_num(h,velo)/reynolds(h,velo,m))
+    sa     = mach_num(h,velo)*dsqrt(gamma/2d0)
+    c1     = 2d0 + 2d0/sa**2 + 1.058d0/sa*dsqrt(temp_w/temp(h)) - 2d0/sa**4
+
+    drag_coeff_real = (a1 + b1*c1)/(1d0 + b1)
+  end function drag_coeff_real
   function drag_coeff(h,velo,m)
     use mod_nrlmsise00
+    use mod_parm, only: dsmc_fix
     implicit none
     double precision h,velo,m,gamma,temp_w,a1,b1,c1,sa,drag_coeff
     gamma  = 1.4d0 ! gas constant
@@ -78,6 +147,34 @@ contains
     c1     = 2d0 + 2d0/sa**2 + 1.058d0/sa*dsqrt(temp_w/temp(h)) - 2d0/sa**4
 
     drag_coeff = (a1 + b1*c1)/(1d0 + b1)
+
+    !if (dsmc_fix) then
+    !  if (knud(h,m).ge.1d6) then
+    !    drag_coeff = drag_coeff*0.908
+    !  else if (knud(h,m).ge.1d5) then
+    !    drag_coeff = drag_coeff*0.905
+    !  else if (knud(h,m).ge.1d4) then
+    !    drag_coeff = drag_coeff*0.888
+    !  else if (knud(h,m).ge.1d3) then
+    !    drag_coeff = drag_coeff*0.935
+    !  else if (knud(h,m).ge.1d2) then
+    !    drag_coeff = drag_coeff*1.02
+    !  else if (knud(h,m).ge.1d1) then
+    !    drag_coeff = drag_coeff*0.894
+    !  else if (knud(h,m).ge.2d0) then
+    !    drag_coeff = drag_coeff*1.03
+    !  else if (knud(h,m).ge.1d0) then
+    !    drag_coeff = drag_coeff*1.05
+    !  else if (knud(h,m).ge.5d-1) then
+    !    drag_coeff = drag_coeff*1.08
+    !  else if (knud(h,m).ge.2d-1) then
+    !    drag_coeff = drag_coeff*1.13
+    !  ! else if (knud(h,m).ge.8d-2) then
+    !  !   drag_coeff = drag_coeff*1.03
+    !  else
+    !    stop 'stop'
+    !  end if
+    !end if
   end function drag_coeff
   ! C_h model (Y. Prevereaud, 2014.)
   function heat_coeff(h,velo,m)
@@ -100,15 +197,6 @@ contains
     lnv = dlog(velo/1d3)
     bright_coeff = dexp(-2.338d0+lnv+1.15d0*dtanh(0.38d0*dlog(m)))
   end function bright_coeff
-
-  ! conductive heating q_conv
-  function q_conv(h,velo,m)
-    use mod_nrlmsise00
-    implicit none
-    double precision h,velo,m,q_conv,diameter
-    ! 7.9248 [km/s] is defined sqrt(radius_earth * gravity(at h = 0))
-    q_conv = 110.35d6/dsqrt(diameter(m)*0.5d0)*dsqrt(rho(h)/rho(0d0))*(velo/7.9248d3)**3.15d0
-  end function q_conv
 
   ! Mach number
   function mach_num(h,velo)
@@ -167,10 +255,10 @@ program trajectory
   double precision t,r,dr,th,dth,m,brightness,magnitude,luminosity
   double precision k1(5),k2(5),k3(5),k4(5)
   double precision func1,func2,func3,func4,func5,velo,area,diameter,dvdt
-  double precision altitude,air_dens,air_temp,air_visc,velocity,mach,re_num,c_d,c_h,tau,knudsen
+  double precision altitude,air_dens,air_temp,air_visc,velocity,mach,re_num,c_d,c_h,tau,knudsen,c_d_real
   double precision velo_last1,velo_last2
-  double precision max_t,max_h,max_bright,max_lumi,max_dens,max_temp,max_visc,max_velo,max_rey,max_cd,max_m,max_d
-  double precision min_knud,knud_t,knud_h,knud_bright,knud_dens,knud_temp,knud_visc,knud_velo,knud_rey,knud_cd,knud_m,knud_d
+  double precision max_t,max_h,max_bright,max_lumi,max_dens,max_temp,max_visc,max_velo,max_rey,max_cd,max_m,max_d,max_dis
+  double precision min_knud,knud_t,knud_h,knud_bright,knud_dens,knud_temp,knud_visc,knud_velo,knud_rey,knud_cd,knud_m,knud_d,knud_heat
 
   ! read run_time parameter.
   call parm
@@ -195,11 +283,17 @@ program trajectory
   open(102, file='./mach_drag.dat')
   open(103, file='./atmos_model.dat')
   open(104, file='./brightness.dat')
-  write(100,*) '       Time  Altitude  Velosity      mass'
+  open(107, file='./heat-flux.dat')
+  open(108, file='./DSMC_fix.dat')
+  open(109, file='./real_coeff.dat')
+  write(100,*) '       Time  Altitude  Velosity      mass   dis=r*th   th'
   write(101,*) '  Altitude   mach    reynolds     Cd      Ch     knudsen'
   write(102,*) '  mach     Cd'
   write(103,*) ' Altitude    density        temp        mu'
   write(104,*) ' Altitude brightness    tau  magnitude  luminosity'
+  write(107,*) ' Altitude heat-flux'
+  write(108,*) ' Altitude q_coeff cd_coeff'
+  write(109,*) ' Altitude q_real cd_real'
 
   write(*,*) 'START COMPUTATION'
 
@@ -219,6 +313,7 @@ program trajectory
      c_d = drag_coeff_inp
      if(c_d.lt.0d0) then
         c_d = drag_coeff(altitude,velocity,m)
+        c_d_real = drag_coeff_real(altitude,velocity,m)
      endif
      c_h = heat_coeff_inp
      if(c_h.lt.0d0) then
@@ -248,9 +343,10 @@ program trajectory
         knud_h      = altitude
         knud_visc   = air_visc
         knud_cd     = c_d
-        min_knud   = knudsen
+        min_knud    = knudsen
         knud_m      = m
         knud_d      = diameter(m)
+        knud_heat   = q_conv(altitude,velocity,m)
      end if
      if(brightness.gt.max_bright) then
         max_t      = t
@@ -265,15 +361,20 @@ program trajectory
         max_lumi   = luminosity
         max_m      = m
         max_d      = diameter(m)
+        max_dis    = r*th
      end if
 
      ! outputs
-     write(100,200) t,altitude,velocity,m
+     write(100,200) t,altitude,velocity,m,r*th,th
      write(101,201) altitude,mach,re_num,c_d,c_h,knudsen
      write(102,202) mach,c_d
      write(103,203) altitude,air_dens,air_temp,air_visc
      write(104,204) altitude,brightness,tau,magnitude,luminosity
-200  format(e12.4,2(f10.2),e12.4)
+     write(107,*) altitude, q_conv(altitude, velocity, m)
+     write(108,*) altitude, q_conv(altitude,velocity,m)/q_conv_real(altitude, velocity, m), c_d/c_d_real
+     write(109,*) altitude, q_conv_real(altitude, velocity, m), c_d_real
+     
+200  format(e12.4,2(f10.2),3e12.4)
 201  format(f10.2,f7.3,e12.4,f7.3,2e12.4)
 202  format(2(f7.3))
 203  format(f10.2,3(e12.4))
@@ -320,13 +421,16 @@ program trajectory
   write(106,206)knud_t,knud_h,knud_bright,min_knud,knud_dens,knud_temp
   write(106,*)'         mu    Velocity    Reynolds          Cd           m    Diameter'
   write(106,206)knud_visc,knud_velo,knud_rey,knud_cd,knud_m,knud_d
+  write(106,*)' heat-flux',knud_heat
 206 format(99e12.4)
-  close(105)
+  close(106)
   open(105,file='./max_bright.dat')
   write(105,*)'       Time    Altitude  Brightness  Luminosity     Density        Temp'
   write(105,205)max_t,max_h,max_bright,max_lumi,max_dens,max_temp
   write(105,*)'         mu    Velocity    Reynolds          Cd           m    Diameter'
   write(105,205)max_visc,max_velo,max_rey,max_cd,max_m,max_d
+  write(105,*)'   distance'
+  write(105,*)max_dis
 205 format(99e12.4)
   close(105)
 
@@ -336,6 +440,7 @@ program trajectory
   close(102)
   close(103)
   close(104)
+  close(107)
 
 end program trajectory
 
@@ -383,6 +488,10 @@ subroutine parm
   read(5,*) GLONG
   write(6,*) 'MASS index : '
   read(5,*) MASS
+  write(6,*) 'heat flux fix coeff'
+  read(5,*) heat_flux_fix_coeff
+  write(6,*) 'DSMC fix table'
+  read(5,*) dsmc_fix
 
   ! variables
   STL        = SEC/3600d0 + GLONG/15d0

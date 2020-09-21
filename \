@@ -1,0 +1,19 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+# input files
+t, h, velo, m = np.loadtxt("./out.dat", skiprows=1, unpack=True)
+h, rho, temp, mu = np.loadtxt("./atmos_model.dat", skiprows=1, unpack=True)
+h, mach, re_num, Cd, Ch = np.loadtxt("./coeff.dat", skiprows=1, unpack=True)
+h, bright = np.loadtxt("./brightness.dat", skiprows=1, unpack=True)
+
+if __name__ == '__main__':
+    fig = plt.figure()
+    ims = []
+
+    for i in range(100):
+        im = plt.plot([0, i], [0, i])
+        ims.append(im)
+
+    ani = animation.ArtistAnimation(fig, ims, interval=10, repeat_delay=10)
